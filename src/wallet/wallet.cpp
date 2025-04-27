@@ -2234,37 +2234,51 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         }
     }
 
-    const bool has_bech32m_spkman(GetScriptPubKeyMan(OutputType::BECH32M, /*internal=*/true));
-    if (has_bech32m_spkman && any_tr) {
-        // Currently tr is the only type supported by the BECH32M spkman
-        return OutputType::BECH32M;
-    }
-    const bool has_bech32_spkman(GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/true));
-    if (has_bech32_spkman && any_wpkh) {
-        // Currently wpkh is the only type supported by the BECH32 spkman
-        return OutputType::BECH32;
-    }
-    const bool has_p2sh_segwit_spkman(GetScriptPubKeyMan(OutputType::P2SH_SEGWIT, /*internal=*/true));
-    if (has_p2sh_segwit_spkman && any_sh) {
-        // Currently sh_wpkh is the only type supported by the P2SH_SEGWIT spkman
-        // As of 2021 about 80% of all SH are wrapping WPKH, so use that
-        return OutputType::P2SH_SEGWIT;
-    }
-    const bool has_legacy_spkman(GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true));
-    if (has_legacy_spkman && any_pkh) {
-        // Currently pkh is the only type supported by the LEGACY spkman
-        return OutputType::LEGACY;
-    }
-
-    if (has_bech32m_spkman) {
-        return OutputType::BECH32M;
-    }
-    if (has_bech32_spkman) {
-        return OutputType::BECH32;
-    }
-    // else use m_default_address_type for change
-    return m_default_address_type;
+    // Prefer Legacy (Base58) first if available
+const bool has_legacy_spkman(GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true));
+if (has_legacy_spkman && any_pkh) {
+    // Prefer PKH (Legacy Base58 address: 1...)
+    return OutputType::LEGACY;
 }
+
+// Then prefer Bech32 if available
+const bool has_bech32_spkman(GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/true));
+if (has_bech32_spkman && any_wpkh) {
+    // Prefer WPKH (Bech32 address: nito1...)
+    return OutputType::BECH32;
+}
+
+// Then check Bech32m (taproot addresses)
+const bool has_bech32m_spkman(GetScriptPubKeyMan(OutputType::BECH32M, /*internal=*/true));
+if (has_bech32m_spkman && any_tr) {
+    // Taproot supported (Bech32m address)
+    return OutputType::BECH32M;
+}
+
+// Then prefer P2SH-SegWit if available
+const bool has_p2sh_segwit_spkman(GetScriptPubKeyMan(OutputType::P2SH_SEGWIT, /*internal=*/true));
+if (has_p2sh_segwit_spkman && any_sh) {
+    // Legacy + SegWit compatibility (3... address)
+    return OutputType::P2SH_SEGWIT;
+}
+
+// Fallback logic if specific conditions are not met
+if (has_legacy_spkman) {
+    return OutputType::LEGACY;
+}
+if (has_bech32_spkman) {
+    return OutputType::BECH32;
+}
+if (has_bech32m_spkman) {
+    return OutputType::BECH32M;
+}
+if (has_p2sh_segwit_spkman) {
+    return OutputType::P2SH_SEGWIT;
+}
+
+// Default to wallet setting if nothing else matches
+return m_default_address_type;
+
 
 void CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm)
 {
